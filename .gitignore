@@ -1,0 +1,7 @@
+.env
+.env.*
+node_modules/
+*.log
+
+# fetched airport layouts (OpenStreetMap via Overpass)
+.cache/

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>SkyTrace &middot; Live Flight Tracker</title>
+<meta name="description" content="Live worldwide air traffic, tracked in real time from open ADS-B data.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9992;</text></svg>">
+<!-- Leaflet is served from this instance, not a CDN: the tracker then works
+     for every machine that can reach it, and a CDN hiccup cannot blank the map. -->
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="map" aria-label="Live air traffic map"></div>
+
+<!-- ─────────────────────────────── top bar ─────────────────────────────── -->
+<header id="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>
+    <div class="brand-text"><b>SkyTrace</b><span>live air traffic</span></div>
+  </div>
+
+  <div class="searchwrap">
+    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14"/></svg>
+    <input id="search" type="search" placeholder="Flight, registration, type, airport, or a route like DEL-BOM…" autocomplete="off" spellcheck="false" aria-label="Search aircraft">
+    <kbd>/</kbd>
+    <div id="results" role="listbox" hidden></div>
+  </div>
+
+  <div class="stats" id="stats">
+    <div class="stat"><b id="stat-visible">—</b><span>tracked</span></div>
+    <div class="stat"><b id="stat-air">—</b><span>airborne</span></div>
+    <div class="stat"><b id="stat-ground">—</b><span>on ground</span></div>
+    <div class="stat"><b id="stat-speed">—</b><span>avg speed</span></div>
+  </div>
+
+  <div class="toolbar">
+    <button id="btn-filters" class="tbtn" title="Filters" aria-label="Filters">
+      <svg viewBox="0 0 24 24"><path d="M10 18h4v-2h-4zM3 6v2h18V6zm3 7h12v-2H6z"/></svg>
+    </button>
+    <button id="btn-layers" class="tbtn" title="Map style" aria-label="Map style">
+      <svg viewBox="0 0 24 24"><path d="m12 2 10 6-10 6L2 8zm0 13.5 8.3-5 1.7 1-10 6-10-6 1.7-1z"/></svg>
+    </button>
+    <button id="btn-watch" class="tbtn" title="Most watched flights" aria-label="Most watched flights">
+      <svg viewBox="0 0 24 24"><path d="M12 5c-5 0-9.3 3.1-11 7 1.7 3.9 6 7 11 7s9.3-3.1 11-7c-1.7-3.9-6-7-11-7m0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10m0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6"/></svg>
+    </button>
+    <button id="btn-locate" class="tbtn" title="My location" aria-label="My location">
+      <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8m8.94 3A9 9 0 0 0 13 3.06V1h-2v2.06A9 9 0 0 0 3.06 11H1v2h2.06A9 9 0 0 0 11 20.94V23h2v-2.06A9 9 0 0 0 20.94 13H23v-2zM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14"/></svg>
+    </button>
+    <div class="live" id="live-badge" title="Feed status">
+      <span class="dot"></span><span id="live-text">connecting</span>
+    </div>
+  </div>
+</header>
+
+<!-- ─────────────────────────────── filters ─────────────────────────────── -->
+<section id="filters" class="panel" hidden aria-label="Filters">
+  <div class="panel-head"><h3>Filters</h3><button class="close" data-close="filters" aria-label="Close">&times;</button></div>
+  <div class="panel-body">
+    <label class="field">
+      <span>Altitude <em id="alt-label">0 – 60 000 ft</em></span>
+      <div class="dual">
+        <input type="range" id="alt-min" min="0" max="60000" step="1000" value="0">
+        <input type="range" id="alt-max" min="0" max="60000" step="1000" value="60000">
+      </div>
+    </label>
+    <label class="field">
+      <span>Minimum speed <em id="spd-label">0 kt</em></span>
+      <input type="range" id="spd-min" min="0" max="600" step="10" value="0">
+    </label>
+    <div class="checks">
+      <label class="chk"><input type="checkbox" id="f-ground" checked><span>Show aircraft on the ground</span></label>
+      <label class="chk"><input type="checkbox" id="f-mil"><span>Military only</span></label>
+      <label class="chk"><input type="checkbox" id="f-emg"><span>Emergency / special squawk only</span></label>
+      <label class="chk"><input type="checkbox" id="f-labels"><span>Always show callsign labels</span></label>
+      <label class="chk"><input type="checkbox" id="f-trails" checked><span>Draw trail for selected flight</span></label>
+      <label class="chk"><input type="checkbox" id="f-route" checked><span>Draw origin &rarr; destination route</span></label>
+      <label class="chk"><input type="checkbox" id="f-airports" checked><span>Show airports</span></label>
+      <label class="chk"><input type="checkbox" id="f-layout" checked><span>Airport ground layout (runways, taxiways, stands)</span></label>
+      <label class="chk"><input type="checkbox" id="f-idline" checked><span>Registration &amp; aircraft type on labels</span></label>
+      <label class="chk"><input type="checkbox" id="f-logos" checked><span>Airline logos</span></label>
+      <label class="chk"><input type="checkbox" id="f-smooth" checked><span>Smooth motion (dead reckoning)</span></label>
+    </div>
+    <div class="facets">
+      <div class="facet">
+        <span class="facet-label">Airline <em id="fc-airline-n"></em></span>
+        <div class="chips" id="fc-airlines"></div>
+      </div>
+      <div class="facet">
+        <span class="facet-label">Aircraft model <em id="fc-type-n"></em></span>
+        <div class="chips" id="fc-types"></div>
+      </div>
+      <div class="facet">
+        <span class="facet-label">Airport <em id="fc-airport-n"></em></span>
+        <div class="chips" id="fc-airports"></div>
+        <small class="facet-note">Origins and destinations of the flights in
+          view whose route has been looked up. Selecting one makes the rest
+          resolve faster.</small>
+      </div>
+      <div class="facet">
+        <span class="facet-label">Class</span>
+        <div class="chips" id="fc-classes"></div>
+      </div>
+    </div>
+    <button id="f-reset" class="ghost">Reset filters</button>
+  </div>
+</section>
+
+<!-- ────────────────────────────── map styles ───────────────────────────── -->
+<section id="layers" class="panel" hidden aria-label="Map style">
+  <div class="panel-head"><h3>Map style</h3><button class="close" data-close="layers" aria-label="Close">&times;</button></div>
+  <div class="panel-body">
+    <div class="styles" id="style-list"></div>
+    <div class="checks">
+      <label class="chk"><input type="checkbox" id="f-color-alt" checked><span>Colour aircraft by altitude</span></label>
+      <label class="chk"><input type="checkbox" id="f-radar"><span>Precipitation radar</span></label>
+    </div>
+    <div id="radar-meta" class="radar-meta" hidden>
+      <div class="radar-scale"><span>light</span><i></i><span>heavy</span></div>
+      <div class="radar-when">Radar frame <b id="radar-time">—</b></div>
+    </div>
+  </div>
+</section>
+
+<!-- Whenever anything is hiding or dimming aircraft, this says what, and
+     undoes all of it in one click. Nothing should ever quietly disappear. -->
+<div id="view-chip" class="view-chip" hidden>
+  <span id="view-chip-text"></span>
+  <button id="view-chip-clear">Show all</button>
+</div>
+
+<!-- ───────────────────────── most watched flights ─────────────────────── -->
+<section id="watch" class="panel" hidden aria-label="Most watched flights">
+  <div class="panel-head"><h3>Most watched</h3><button class="close" data-close="watch" aria-label="Close">&times;</button></div>
+  <div class="panel-body">
+    <div id="watch-body"><div class="wl-empty">Loading…</div></div>
+    <div class="wl-foot">Counts the people using <em>this</em> tracker — you and
+      anyone else with it open on your network. Nothing is stored: a viewer that
+      stops reporting is forgotten within a minute.</div>
+  </div>
+</section>
+
+<!-- ──────────────────────────── detail sidebar ────────────────────────── -->
+<aside id="detail" hidden aria-live="polite">
+  <button class="close big" id="detail-close" aria-label="Close details">&times;</button>
+  <div id="detail-body"></div>
+</aside>
+
+<!-- ─────────────────────────── airport sidebar ────────────────────────── -->
+<aside id="airport" hidden aria-live="polite">
+  <button class="close big" id="airport-close" aria-label="Close airport">&times;</button>
+  <div id="airport-body"></div>
+</aside>
+
+<!-- ──────────────────────────────── legend ────────────────────────────── -->
+<div id="legend">
+  <span class="lg-title">Altitude</span>
+  <div class="ramp"></div>
+  <div class="ramp-labels" id="ramp-labels"></div>
+  <div class="lg-foot">feet above sea level &middot; grey = parked &middot; amber = on a runway</div>
+</div>
+
+<div id="toast" hidden></div>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="data.js"></script>
+<script src="airports.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

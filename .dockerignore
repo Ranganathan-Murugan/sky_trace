@@ -1,0 +1,8 @@
+# Never bake secrets or a machine-specific cache into an image.
+.env
+.env.*
+.cache/
+docs/
+*.log
+.git/
+skytrace.service

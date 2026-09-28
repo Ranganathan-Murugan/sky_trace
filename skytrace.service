@@ -1,0 +1,38 @@
+# SkyTrace as a background service, so the tracker is up whenever this machine
+# is and the other machines on your network can just open the URL.
+#
+# Install (as your own user, no root needed):
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp "/home/ranganathan/airplane tracker/skytrace.service" ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now skytrace
+#   loginctl enable-linger "$USER"     # keep it running when you are logged out
+#
+# Then:  systemctl --user status skytrace
+#        journalctl --user -u skytrace -f      # live log
+#        systemctl --user restart skytrace     # after editing the code
+#
+# Node is referenced by absolute path because a service does not run your
+# shell profile, so nvm's PATH is not set up for it.
+
+[Unit]
+Description=SkyTrace live flight tracker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ranganathan/airplane tracker
+ExecStart=/home/ranganathan/.nvm/versions/node/v24.18.0/bin/node server.js
+Restart=always
+RestartSec=3
+# Bind to every interface so the rest of the network can reach it. Set this to
+# 127.0.0.1 if you ever want to keep it to this machine only.
+Environment=HOST=0.0.0.0
+Environment=PORT=8787
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

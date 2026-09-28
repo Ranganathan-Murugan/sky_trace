@@ -1,0 +1,29 @@
+# Render blueprint — a single always-on container, which is the shape this app
+# wants. One instance means the rate limiter and the caches behave exactly as
+# they do locally.
+#
+# Deploy: push this repo to GitHub, then New > Blueprint on render.com and
+# point it here. Set the three secret values in the dashboard afterwards.
+services:
+  - type: web
+    name: skytrace
+    runtime: docker
+    plan: free
+    region: frankfurt          # nearest to Europe's ADS-B coverage; oregon/singapore also fine
+    healthCheckPath: /healthz
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      # The free plan has an ephemeral disk and a bandwidth allowance, so let
+      # the browser fetch tiles straight from the provider.
+      - key: TILE_PROXY
+        value: "off"
+      # Set these in the dashboard - they are never committed.
+      - key: ACCESS_TOKEN
+        sync: false
+      - key: OPENSKY_CLIENT_ID
+        sync: false
+      - key: OPENSKY_CLIENT_SECRET
+        sync: false
+      - key: CONTACT
+        sync: false
